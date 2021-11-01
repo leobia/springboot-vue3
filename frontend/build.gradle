@@ -1,0 +1,33 @@
+plugins {
+    id 'com.github.node-gradle.node' version '3.1.1'
+}
+
+node {
+    version = '16.13.0'
+    npmVersion = '8.1.2'
+    distBaseUrl = 'https://nodejs.org/dist'
+    download = true
+    workDir = file("${project.buildDir}/nodejs")
+    npmWorkDir = file("${project.buildDir}/npm")
+    nodeModulesDir = file("${project.projectDir}")
+}
+
+task npmBuild(type: NpmTask) {
+    dependsOn 'npmInstall'
+    dependsOn 'clean'
+    args = ['run', 'build']
+}
+
+task npmBuildDev(type: NpmTask) {
+    dependsOn 'npmInstall'
+    dependsOn 'clean'
+    args = ['run', 'build']
+}
+
+task clean() {
+    description 'Clean the dist folder'
+    group 'build'
+    doFirst {
+        delete 'build/dist'
+    }
+}

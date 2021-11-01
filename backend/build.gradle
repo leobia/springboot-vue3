@@ -1,0 +1,160 @@
+plugins {
+	id 'org.springframework.boot'
+	id 'io.spring.dependency-management'
+	id 'idea'
+	id 'war'
+}
+
+sourceCompatibility = '11'
+
+repositories {
+	mavenCentral()
+	maven { url 'https://plugins.gradle.org/m2/' }
+}
+
+configurations.all {
+    exclude group: 'org.springframework.boot', module: 'spring-boot-starter-logging'
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-log4j2'
+	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'com.h2database:h2'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+test {
+	useJUnitPlatform()
+}
+
+def loadConfiguration() {
+
+    println "Debug: " + hasProperty('debug');
+
+    def environment = hasProperty('env') ? env : 'local';
+    project.ext.environment = environment;
+    println "Environment is set to $environment";
+
+    def tag = hasProperty('tag') ? tag : 'master';
+    project.ext.deployTag = tag;
+    println "TAG is set to $deployTag";
+
+    apply from: "properties/$environment-properties.gradle";
+    apply from: "properties/properties.gradle"
+
+    if (hasProperty('debug')) {
+        project.ext.debug = true;
+    } else {
+        project.ext.debug = false;
+    }
+
+}
+
+ext {
+    projectName = 'gym-webapp'
+    destinationDirName = 'dist'
+    destinationDir = file(destinationDirName)
+}
+
+configurations {
+    providedRuntime
+}
+
+sourceSets {
+    main {
+        resources {
+            srcDir '../frontend/build/dist'
+        }
+    }
+}
+
+processResources {
+    loadConfiguration();
+
+    filesMatching("**/*.properties") {
+        expand(project.ext.getProperties())
+    }
+
+    filesMatching("**/*.xml") {
+        expand(project.ext.getProperties())
+    }
+
+    if (project.ext.environment == 'prod') {
+        mustRunAfter ':frontend:npmBuild'
+    }
+
+    if (project.ext.environment != 'prod') {
+        mustRunAfter ':frontend:npmBuildDev'
+    }
+
+}
+
+bootRun {
+    def arg = ["-Duser.timezone=UTC"];
+
+    if (project.ext.debug) {
+        arg.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=32323")
+    }
+
+    println arg
+    jvmArgs = arg
+}
+
+task startApp {
+    group 'build'
+    def tasks = [clean, bootRun]
+    for (int i = 0; i < tasks.size() - 1; i++) {
+        tasks[i + 1].mustRunAfter(tasks[i])
+    }
+
+    dependsOn(tasks)
+}
+
+
+bootWar {
+
+    if (project.ext.environment == 'prod') {
+        dependsOn ':frontend:npmBuild'
+    }
+
+    if (project.ext.environment != 'prod') {
+        dependsOn ':frontend:npmBuildDev'
+    }
+
+    manifest {
+        attributes 'Created-By': System.getProperty('user.name'),
+                'Created-On': new Date().format('dd/MM/yyyy HH:mm:ss'),
+                //'Gradle-Version': GradleVersion.current(),
+                'Java-Version': System.getProperty('java.version')
+    }
+
+    destinationDirectory = file(destinationDirName)
+    archiveFileName = "${projectName}.war"
+}
+
+bootJar {
+    archiveName 'report-tool.jar'
+
+    if (project.ext.environment == 'prod') {
+        dependsOn ':frontend:npmBuild'
+    }
+
+    if (project.ext.environment != 'prod') {
+        dependsOn ':frontend:npmBuildDev'
+    }
+
+}
+
+task createWar {
+    group 'build'
+
+    def tasks = [clean, bootWar]
+    for (int i = 0; i < tasks.size() - 1; i++) {
+        tasks[i + 1].mustRunAfter(tasks[i])
+    }
+    dependsOn(tasks)
+}
+
